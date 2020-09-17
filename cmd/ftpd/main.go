@@ -20,8 +20,12 @@ func main() {
 	flag.StringVar(&dataaddr, "data-addr", "0.0.0.0", "Data listen address")
 	flag.Parse()
 
+	tree := mount.NewNodeTree()
+	tree.Mount("dir", &mount.NodeSysFolder{Path: dir})
+	tree.Mount("wd", &mount.NodeSysFolder{Path: "."})
+
 	s := &ftpd.Server{
-		Node:        &mount.NodeSysFolder{Path: dir},
+		Node:        tree,
 		Port:        port,
 		Address:     ctrladdr,
 		DataAddress: dataaddr,

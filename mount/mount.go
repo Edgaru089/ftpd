@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"os"
 	"strings"
 	"sync"
@@ -113,7 +114,7 @@ type node struct {
 // Weird things might happen.
 type NodeTree node
 
-func NewRootNode() *NodeTree {
+func NewNodeTree() *NodeTree {
 	return &NodeTree{completePath: "/"}
 }
 
@@ -262,6 +263,8 @@ func (n *NodeTree) List(folder string) (files []File, err error) {
 }
 
 func (n *NodeTree) Stat(file string) (File, error) {
+	log.Print(`NodeTree: Stat("`, file, `")`)
+
 	node := n.walk(file)
 	if node == nil || file[:len(node.completePath)] != node.completePath {
 		return File{}, ErrFileNotFound

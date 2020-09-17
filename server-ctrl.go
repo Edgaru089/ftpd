@@ -159,7 +159,11 @@ func (s *Server) doCtrlLine(line []byte, sc *bufio.Scanner, state *ctrlState, wr
 		if param[0] == '/' {
 			target = param
 		} else {
-			target = state.wd + "/" + param
+			if state.wd == "/" {
+				target = "/" + param
+			} else {
+				target = state.wd + "/" + param
+			}
 		}
 		stat, err := s.Node.Stat(target)
 		if target == "/" || (err == nil && stat.IsDirectory) { // A folder
@@ -416,6 +420,9 @@ func (s *Server) doCtrlLine(line []byte, sc *bufio.Scanner, state *ctrlState, wr
 			break
 		}
 		param := state.wd + "/" + string(line[len(cmd)+1:])
+		if state.wd == "/" { // param="//dir"
+			param = param[1:]
+		}
 		stat, err := s.Node.Stat(param)
 		if err != nil {
 			writeFTPReplySingleline(writer, 550)
@@ -428,6 +435,9 @@ func (s *Server) doCtrlLine(line []byte, sc *bufio.Scanner, state *ctrlState, wr
 			break
 		}
 		param := state.wd + "/" + string(line[len(cmd)+1:])
+		if state.wd == "/" { // param="//dir"
+			param = param[1:]
+		}
 		stat, err := s.Node.Stat(param)
 		if err != nil {
 			writeFTPReplySingleline(writer, 550)
@@ -444,6 +454,9 @@ func (s *Server) doCtrlLine(line []byte, sc *bufio.Scanner, state *ctrlState, wr
 			param = state.wd
 		} else {
 			param = state.wd + "/" + string(line[len(cmd)+1:])
+			if state.wd == "/" { // param="//dir"
+				param = param[1:]
+			}
 		}
 		stat, err := s.Node.Stat(param)
 		if err != nil {
@@ -465,6 +478,9 @@ func (s *Server) doCtrlLine(line []byte, sc *bufio.Scanner, state *ctrlState, wr
 			param = state.wd
 		} else {
 			param = state.wd + "/" + string(line[len(cmd)+1:])
+			if state.wd == "/" { // param="//dir"
+				param = param[1:]
+			}
 		}
 		list, err := s.Node.List(param)
 		if err != nil {
