@@ -5,6 +5,7 @@ import (
 	"log"
 	"net"
 	"strconv"
+	"sync"
 	"time"
 
 	"github.com/Edgaru089/ftpd/auth"
@@ -20,7 +21,7 @@ type Server struct {
 	Address string
 
 	// Minimum and maximum data listening port for passive mode.
-	// Defaults to 63700-63799.
+	// Defaults to 63700-63899.
 	MinDataPort, MaxDataPort int
 	// Listen address for data connections in passive mode, defaults to "0.0.0.0".
 	DataAddress string
@@ -36,9 +37,12 @@ type Server struct {
 	DataConnTimeout time.Duration
 
 	listener *net.TCPListener // control listener
-
 	// for closing the listener, atomic only!!
 	close chan struct{}
+
+	// Avaliable data ports
+	dports map[int]struct{}
+	dplock sync.Mutex
 }
 
 // Start starts a FTP server.
@@ -56,7 +60,7 @@ func (s *Server) Start() error {
 	}
 	if s.MinDataPort == 0 || s.MaxDataPort == 0 {
 		s.MinDataPort = 63700
-		s.MaxDataPort = 63799
+		s.MaxDataPort = 63899
 	}
 	if s.DataAddress == "" {
 		s.DataAddress = "0.0.0.0"
@@ -77,12 +81,34 @@ func (s *Server) Start() error {
 		return errors.New("ftpd.Server.Start: TCP listen error: " + err.Error())
 	}
 
+	s.dports = make(map[int]struct{})
+	for i := s.MinDataPort; i <= s.MaxDataPort; i++ {
+		s.dports[i] = struct{}{}
+	}
+
 	log.Printf("ftpd: listening on ctrl %s, data [%s]:[%d-%d]", net.JoinHostPort(s.Address, strconv.Itoa(s.Port)), s.DataAddress, s.MinDataPort, s.MaxDataPort)
 
 	s.close = make(chan struct{})
 	go s.goListen()
 
 	return nil
+}
+
+// 0 for unavailable
+func (s *Server) alloPort() int {
+	s.dplock.Lock()
+	defer s.dplock.Unlock()
+	for i := range s.dports {
+		delete(s.dports, i)
+		return i
+	}
+	return 0
+}
+
+func (s *Server) freePort(port int) {
+	s.dplock.Lock()
+	defer s.dplock.Unlock()
+	s.dports[port] = struct{}{}
 }
 
 func (s *Server) goListen() {

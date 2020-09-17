@@ -28,6 +28,7 @@ func (s *Server) ensureOpenDataConn(sc *bufio.Scanner, state *ctrlState, writer 
 		// Close and dispose the listener (???)
 		state.pasvListener.Close()
 		state.pasvListener = nil
+		s.freePort(state.pasvPort)
 
 	} else {
 		writeFTPReplySingleline(writer, 125)

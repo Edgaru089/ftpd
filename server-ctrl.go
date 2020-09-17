@@ -242,12 +242,17 @@ func (s *Server) doCtrlLine(line []byte, sc *bufio.Scanner, state *ctrlState, wr
 			}
 		}
 
-		// TODO Listen in specified port range instead of random
-		l, err := net.Listen("tcp4", net.JoinHostPort(addr, "0"))
+		dport := s.alloPort()
+		if dport == 0 {
+			writeFTPReplySingleline(writer, 421)
+			break
+		}
+		state.pasvPort = dport
+
+		l, err := net.Listen("tcp4", net.JoinHostPort(addr, strconv.Itoa(dport)))
 		state.pasvListener = l.(*net.TCPListener)
 		if err != nil {
 			writeFTPReplySingleline(writer, 421)
-			writer.Close()
 			log.Print("doCtrlLine: listen error: ", err)
 			break
 		}
@@ -255,13 +260,11 @@ func (s *Server) doCtrlLine(line []byte, sc *bufio.Scanner, state *ctrlState, wr
 		_, pasvStr, err := net.SplitHostPort(state.pasvListener.Addr().String())
 		if err != nil {
 			writeFTPReplySingleline(writer, 421)
-			writer.Close()
 			break
 		}
 		pasvPort, err := strconv.Atoi(pasvStr)
 		if err != nil {
 			writeFTPReplySingleline(writer, 421)
-			writer.Close()
 			break
 		}
 		writeFTPReplySingleline(writer, 227, packHostPortSlice(net.ParseIP(s.DataAddress), pasvPort))
