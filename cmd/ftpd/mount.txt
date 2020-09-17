@@ -1,0 +1,9 @@
+# should be $GOPATH/src/github.com/Edgaru089
+/Edgaru089:../../..
+
+# should be $GOPATH/src/golang.org/x/tools
+/golang.org/tools:../../../../../golang.org/x/tools
+
+# should be $GOPATH/src/github.com/golang/protobuf
+/golang.org/protobuf:../../../../golang/protobuf
+

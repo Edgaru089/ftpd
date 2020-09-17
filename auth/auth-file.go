@@ -2,9 +2,9 @@ package auth
 
 import (
 	"bufio"
+	"bytes"
 	"log"
 	"os"
-	"strings"
 )
 
 // File represents an authenticator from an text file.
@@ -14,7 +14,7 @@ import (
 //
 //    [Username]:[Password]:["r" or "rw"]
 //
-// The first semicolon ends the username, and the last ends the password.
+// The first colon ends the username, and the last ends the password.
 // A line ending in "r" represents a read-only account, while one ending
 // in "rw" represents a read-write one.
 //
@@ -59,15 +59,14 @@ func NewFile(filename string) (a *File, err error) {
 			continue
 		}
 
-		ls := string(line)
-
-		id1 := strings.IndexByte(ls, ':')
-		id2 := strings.LastIndexByte(ls, ':')
+		id1 := bytes.IndexByte(line, ':')
+		id2 := bytes.LastIndexByte(line, ':')
 		if id1 == -1 || id1 == id2 {
 			log.Printf("auth.NewFile: line %d fromat error (no enough seperator)", lnum)
 			continue
 		}
 
+		ls := string(line)
 		uname := ls[:id1]
 		pass := ls[id1+1 : id2]
 		mode := ls[id2+1:]
