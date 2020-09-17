@@ -7,17 +7,19 @@ import (
 	"os/signal"
 
 	"github.com/Edgaru089/ftpd"
+	"github.com/Edgaru089/ftpd/auth"
 	"github.com/Edgaru089/ftpd/mount"
 )
 
 func main() {
 
-	var dir, ctrladdr, dataaddr string
+	var dir, ctrladdr, dataaddr, authfile string
 	var port int
 	flag.StringVar(&dir, "dir", ".", "root directory")
 	flag.IntVar(&port, "port", 21, "Control FTP Port")
 	flag.StringVar(&ctrladdr, "ctrl-addr", "0.0.0.0", "Control listen address")
 	flag.StringVar(&dataaddr, "data-addr", "0.0.0.0", "Data listen address")
+	flag.StringVar(&authfile, "auth-file", "", "auth file path, Anonymous if not present")
 	flag.Parse()
 
 	tree := mount.NewNodeTree()
@@ -31,6 +33,11 @@ func main() {
 		DataAddress: dataaddr,
 	}
 
+	if len(authfile) != 0 {
+		// Ignore error since s.Auth is nil this case, which defaults to anonymous
+		s.Auth, _ = auth.NewFile(authfile)
+	}
+
 	err := s.Start()
 	if err != nil {
 		log.Fatal("ftpd start error: ", err)
@@ -41,5 +48,7 @@ func main() {
 	<-ch
 
 	s.Stop()
+
+	log.Print("A graceful shutdown. Thank you.")
 
 }

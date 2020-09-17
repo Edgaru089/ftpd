@@ -1,0 +1,3 @@
+readwrite:password:rw
+readonly:password:r
+

@@ -84,7 +84,7 @@ func (s *Server) readFromDataConn(to io.Writer, sc *bufio.Scanner, state *ctrlSt
 			// Completed without much error, send the okay message
 			writeFTPReplySingleline(writer, 226)
 		} else {
-			log.Print("writeDataConn: error: ", err)
+			log.Print("readDataConn: error: ", err)
 			writeFTPReplySingleline(writer, 426)
 		}
 

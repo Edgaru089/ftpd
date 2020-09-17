@@ -64,7 +64,7 @@ func (s *Server) goCtrlConn(conn io.ReadWriteCloser) {
 	defer func() {
 		err := recover()
 		if err != nil {
-			stack := make([]byte, 1024)
+			stack := make([]byte, 8192)
 			stack = stack[:runtime.Stack(stack, false)]
 			log.Print("goCtrlConn: panic: ", err, ", stack trace:\n", string(stack))
 		}

@@ -39,3 +39,17 @@ func (Anonymous) Login(username, password string) AccessType {
 		return NoPermission
 	}
 }
+
+// SingleAccount is an authenticator with a single username/password pair,
+// granting read-write access.
+type SingleAccount struct {
+	Username, Password string
+}
+
+func (s *SingleAccount) Login(username, password string) AccessType {
+	if username == s.Username && password == s.Password {
+		return ReadWrite
+	} else {
+		return NoPermission
+	}
+}

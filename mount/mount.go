@@ -119,7 +119,7 @@ func NewNodeTree() *NodeTree {
 }
 
 func stripSlash(path string) string {
-	if path == "/" {
+	if len(path) == 0 || path == "/" {
 		return ""
 	}
 	if path[0] == '/' {
@@ -133,14 +133,14 @@ func stripSlash(path string) string {
 
 func (root *NodeTree) walk(path string) *node {
 	dirs := strings.Split(stripSlash(path), "/")
-	fmt.Println("mount:", stripSlash(path), "dirs:", dirs, "len:", len(dirs))
+	log.Print("mount:", stripSlash(path), ", dirs:", dirs, ", len:", len(dirs))
 
 	cur := (*node)(root)
 	for _, str := range dirs {
 		if len(str) == 0 {
 			continue
 		}
-		fmt.Println("walking past", str)
+		//fmt.Println("walking past", str)
 
 		cur.RLock()
 
@@ -157,7 +157,7 @@ func (root *NodeTree) walk(path string) *node {
 		// has a node
 		if cur.node != nil {
 			cur.RUnlock()
-			fmt.Printf("Returning %s (%v)", cur.completePath, cur)
+			log.Print("Returning ", cur.completePath)
 			return cur
 		}
 
@@ -174,14 +174,14 @@ func (root *NodeTree) Mount(path string, n Node) error {
 	}
 
 	dirs := strings.Split(stripSlash(path), "/")
-	fmt.Println("mount:", stripSlash(path), "dirs:", dirs, "len:", len(dirs))
+	log.Print("mount: Mounting onto:", stripSlash(path), ", dirs:", dirs, ", len:", len(dirs))
 
 	cur := (*node)(root)
 	for _, str := range dirs {
 		if len(str) == 0 {
 			continue
 		}
-		fmt.Println("walking past", str)
+		//fmt.Println("walking past", str)
 
 		cur.Lock()
 		// has a node
@@ -207,7 +207,7 @@ func (root *NodeTree) Mount(path string, n Node) error {
 		prev.Unlock()
 	}
 
-	fmt.Println("walk done, cur.Path =", cur.completePath)
+	log.Print("mount: Mount walk done, cur.Path:", cur.completePath)
 
 	switch {
 	case cur.ch != nil:
@@ -265,8 +265,10 @@ func (n *NodeTree) List(folder string) (files []File, err error) {
 func (n *NodeTree) Stat(file string) (File, error) {
 	log.Print(`NodeTree: Stat("`, file, `")`)
 
+	file = stripSlash(file)
+
 	node := n.walk(file)
-	if node == nil || file[:len(node.completePath)] != node.completePath {
+	if node == nil {
 		return File{}, ErrFileNotFound
 	}
 	if node.node == nil {
@@ -283,52 +285,63 @@ func (n *NodeTree) Stat(file string) (File, error) {
 			}, nil
 		}
 	}
-	return node.node.Stat(file[len(node.completePath):])
+
+	rawNodePath := stripSlash(node.completePath)
+	return node.node.Stat(file[len(rawNodePath):])
 }
 
 func (n *NodeTree) ReadFile(file string) (io.Reader, error) {
-	fmt.Println("node.ReadFile", file)
+	file = stripSlash(file)
 	node := n.walk(file)
-	if node == nil || node.node == nil || file[:len(node.completePath)] != node.completePath {
+	if node == nil || node.node == nil {
 		return nil, ErrFileNotFound
 	}
-
-	fmt.Println("path =", node.completePath, " subpath =", file[len(node.completePath):])
-	return node.node.ReadFile(file[len(node.completePath):])
+	rawNodePath := stripSlash(node.completePath)
+	return node.node.ReadFile(file[len(rawNodePath):])
 }
 
 func (n *NodeTree) WriteFile(file string) (io.Writer, error) {
+	file = stripSlash(file)
 	node := n.walk(file)
-	if node == nil || node.node == nil || file[:len(node.completePath)] != n.completePath {
+	if node == nil || node.node == nil {
 		return nil, ErrFileNotFound
 	}
-	return node.node.WriteFile(file[len(node.completePath):])
+	rawNodePath := stripSlash(node.completePath)
+	return node.node.WriteFile(file[len(rawNodePath):])
 }
 func (n *NodeTree) AppendFile(file string) (io.Writer, error) {
+	file = stripSlash(file)
 	node := n.walk(file)
-	if node == nil || node.node == nil || file[:len(node.completePath)] != node.completePath {
+	if node == nil || node.node == nil {
 		return nil, ErrFileNotFound
 	}
-	return node.node.AppendFile(file[len(node.completePath):])
+	rawNodePath := stripSlash(node.completePath)
+	return node.node.AppendFile(file[len(rawNodePath):])
 }
 func (n *NodeTree) DeleteFile(file string) error {
+	file = stripSlash(file)
 	node := n.walk(file)
-	if node == nil || node.node == nil || file[:len(node.completePath)] != node.completePath {
+	if node == nil || node.node == nil {
 		return ErrFileNotFound
 	}
-	return node.node.DeleteFile(file[len(node.completePath):])
+	rawNodePath := stripSlash(node.completePath)
+	return node.node.DeleteFile(file[len(rawNodePath):])
 }
 func (n *NodeTree) MakeDirectory(dir string) error {
+	dir = stripSlash(dir)
 	node := n.walk(dir)
-	if node == nil || node.node == nil || dir[:len(node.completePath)] != node.completePath {
+	if node == nil || node.node == nil {
 		return ErrFileNotFound
 	}
-	return node.node.MakeDirectory(dir[len(node.completePath):])
+	rawNodePath := stripSlash(node.completePath)
+	return node.node.MakeDirectory(dir[len(rawNodePath):])
 }
 func (n *NodeTree) RemoveDirectory(dir string) error {
+	dir = stripSlash(dir)
 	node := n.walk(dir)
-	if node == nil || node.node == nil || dir[:len(node.completePath)] != node.completePath {
+	if node == nil || node.node == nil {
 		return ErrFileNotFound
 	}
-	return node.node.RemoveDirectory(dir[len(node.completePath):])
+	rawNodePath := stripSlash(node.completePath)
+	return node.node.RemoveDirectory(dir[len(rawNodePath):])
 }
