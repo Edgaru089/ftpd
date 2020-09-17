@@ -1,7 +1,6 @@
 package mount
 
 import (
-	"fmt"
 	"io"
 	"io/ioutil"
 	"os"
@@ -22,8 +21,8 @@ var _ Node = &NodeSysFolder{}
 
 func (n *NodeSysFolder) Name() string { return "sysfolder:" + n.NodeName }
 
-func (n *NodeSysFolder) List() (files []File, err error) {
-	osfiles, err := ioutil.ReadDir(n.Path)
+func (n *NodeSysFolder) List(folder string) (files []File, err error) {
+	osfiles, err := ioutil.ReadDir(filepath.Join(n.Path, folder))
 	if err != nil {
 		return nil, err
 	}
@@ -41,8 +40,21 @@ func (n *NodeSysFolder) List() (files []File, err error) {
 	return
 }
 
+func (n *NodeSysFolder) Stat(file string) (result File, err error) {
+	stat, err := os.Stat(filepath.Join(n.Path, file))
+	if err != nil {
+		return File{}, err
+	}
+
+	return File{
+		Name:        stat.Name(),
+		Size:        stat.Size(),
+		LastModify:  stat.ModTime(),
+		IsDirectory: stat.IsDir(),
+	}, nil
+}
+
 func (n *NodeSysFolder) ReadFile(file string) (io.Reader, error) {
-	fmt.Println("ReadFile", filepath.Join(n.Path, file))
 	return os.Open(filepath.Join(n.Path, file))
 }
 

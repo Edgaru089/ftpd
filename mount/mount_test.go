@@ -3,7 +3,6 @@ package mount
 import (
 	"fmt"
 	"io"
-	"os"
 	"testing"
 )
 
@@ -36,10 +35,22 @@ func TestMount(t *testing.T) {
 
 	file, err := root.ReadFile("/213/4325/gfd/mount_test.go")
 	if err != nil {
-		t.Errorf("Filesystem mount Read failed: %s", err)
+		t.Errorf("Filesystem mount Read failed: %s", err.Error())
 	}
 
-	io.Copy(os.Stdout, file)
+	files, err := root.List("/root")
+	if err != nil {
+		t.Errorf("Filesystem mount List failed: %s", err.Error())
+	}
+	fmt.Print(files)
+
+	stat, err := root.Stat("/root/mount_test.go")
+	if err != nil {
+		t.Errorf("Filesystem mount Stat failed: %s", err.Error())
+	}
+	fmt.Print(stat)
+
+	//io.Copy(os.Stdout, file)
 	if cl, ok := file.(io.Closer); ok {
 		cl.Close()
 	}

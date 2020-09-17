@@ -21,6 +21,7 @@ var (
 	ErrFileNotFound = os.ErrNotExist
 	ErrFileFound    = os.ErrExist
 	ErrNoPermission = os.ErrPermission
+	ErrNotFolder    = errors.New("listing a non-folder")
 	ErrOther        = errors.New("unknown error")
 )
 
@@ -30,7 +31,8 @@ var (
 type Node interface {
 	// Name returns the name to be printed for a human reader to identify.
 	Name() string
-	List() ([]File, error) // List lists the files under the node.
+	List(folder string) ([]File, error) // List lists the files under the node.
+	Stat(file string) (File, error)     // Stat stats a single file under the node.
 
 	// ReadFile returns a io.Reader created by reading the file
 	// under this directory, possibly transversing through other
@@ -134,6 +136,9 @@ func (root *NodeTree) walk(path string) *node {
 
 	cur := (*node)(root)
 	for _, str := range dirs {
+		if len(str) == 0 {
+			continue
+		}
 		fmt.Println("walking past", str)
 
 		cur.RLock()
@@ -172,6 +177,9 @@ func (root *NodeTree) Mount(path string, n Node) error {
 
 	cur := (*node)(root)
 	for _, str := range dirs {
+		if len(str) == 0 {
+			continue
+		}
 		fmt.Println("walking past", str)
 
 		cur.Lock()
@@ -219,23 +227,31 @@ func (*NodeTree) Name() string {
 	return "nodetree"
 }
 
-func (n *NodeTree) List() (files []File, err error) {
-	n.RLock()
-	// Oops! defer executes after return
-	//defer n.RUnlock()
+func (n *NodeTree) List(folder string) (files []File, err error) {
+	if folder[0] != '/' {
+		folder = "/" + folder
+	}
+	if folder[len(folder)-1] != '/' {
+		folder = folder + "/"
+	}
 
-	if n.node != nil {
-		n.RUnlock()
-		return n.List()
+	node := n.walk(folder)
+	node.RLock()
+	// Oops! defer executes after return
+	//defer node.RUnlock()
+
+	if node.node != nil {
+		node.RUnlock()
+		return node.node.List(folder[len(node.completePath):])
 	}
 
 	// We can defer now!
-	defer n.RUnlock()
+	defer node.RUnlock()
 
 	// we have only folders in a virtual filesystem...
-	files = make([]File, len(n.ch))
+	files = make([]File, len(node.ch))
 	i := 0
-	for name := range n.ch {
+	for name := range node.ch {
 		files[i] = File{
 			IsDirectory: true,
 			Name:        name,
@@ -243,6 +259,28 @@ func (n *NodeTree) List() (files []File, err error) {
 		i++
 	}
 	return
+}
+
+func (n *NodeTree) Stat(file string) (File, error) {
+	node := n.walk(file)
+	if node == nil || file[:len(node.completePath)] != node.completePath {
+		return File{}, ErrFileNotFound
+	}
+	if node.node == nil {
+		id := strings.LastIndexByte(file, '/')
+		if id == -1 {
+			return File{
+				Name:        file,
+				IsDirectory: true,
+			}, nil
+		} else {
+			return File{
+				Name:        file[id:],
+				IsDirectory: true,
+			}, nil
+		}
+	}
+	return node.node.Stat(file[len(node.completePath):])
 }
 
 func (n *NodeTree) ReadFile(file string) (io.Reader, error) {
