@@ -1,6 +1,7 @@
 package ftpd
 
 import (
+	"bytes"
 	"errors"
 	"log"
 	"net"
@@ -43,6 +44,9 @@ type Server struct {
 	// Avaliable data ports
 	dports map[int]struct{}
 	dplock sync.Mutex
+
+	// An internal buffer, reused on every command.
+	buffer bytes.Buffer
 }
 
 // Start starts a FTP server.

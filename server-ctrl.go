@@ -3,6 +3,7 @@ package ftpd
 import (
 	"bufio"
 	"bytes"
+	"fmt"
 	"io"
 	"log"
 	"net"
@@ -74,7 +75,7 @@ func (s *Server) goCtrlConn(conn io.ReadWriteCloser) {
 	defer conn.Close()
 
 	// Hello!
-	writeFTPReplySingleline(conn, 220)
+	writeFTPReplySingleline(conn, &s.buffer, 220)
 
 	// The FTP protocol is strictly Telnet(CRLF) based so
 	// we could just use bufio.Scanner with CRLF ending
@@ -100,6 +101,9 @@ func (s *Server) goCtrlConn(conn io.ReadWriteCloser) {
 }
 
 func (s *Server) doCtrlLine(line []byte, sc *bufio.Scanner, state *ctrlState, writer io.WriteCloser) {
+	// Reuse the server buffer
+	buf := &s.buffer
+	buf.Reset()
 
 	// Read the first word ended either by Space or CRLF
 	var cmd []byte
@@ -124,14 +128,14 @@ func (s *Server) doCtrlLine(line []byte, sc *bufio.Scanner, state *ctrlState, wr
 		state.auth = s.Auth.Login(param, "")
 		if state.auth != auth.NoPermission {
 			// Success
-			writeFTPReplySingleline(writer, 230)
+			writeFTPReplySingleline(writer, buf, 230)
 		} else {
 			state.username = param
-			writeFTPReplySingleline(writer, 331)
+			writeFTPReplySingleline(writer, buf, 331)
 		}
 	case "PASS":
 		if len(state.username) == 0 { // Invalid: PASS comes after USER
-			writeFTPReplySingleline(writer, 503)
+			writeFTPReplySingleline(writer, buf, 503)
 			break
 		}
 
@@ -144,14 +148,14 @@ func (s *Server) doCtrlLine(line []byte, sc *bufio.Scanner, state *ctrlState, wr
 
 		state.auth = s.Auth.Login(state.username, param)
 		if state.auth != auth.NoPermission {
-			writeFTPReplySingleline(writer, 230)
+			writeFTPReplySingleline(writer, buf, 230)
 		} else {
 			state.username = param
-			writeFTPReplySingleline(writer, 530)
+			writeFTPReplySingleline(writer, buf, 530)
 		}
 	case "CWD":
 		if !state.auth.HasAccess(auth.ReadOnly) {
-			writeFTPReplySingleline(writer, 530)
+			writeFTPReplySingleline(writer, buf, 530)
 			break
 		}
 		param := string(line[len(cmd)+1:])
@@ -171,25 +175,25 @@ func (s *Server) doCtrlLine(line []byte, sc *bufio.Scanner, state *ctrlState, wr
 			if state.wd != "/" && state.wd[len(state.wd)-1] == '/' {
 				state.wd = state.wd[:len(state.wd)-1]
 			}
-			writeFTPReplySingleline(writer, 200)
+			writeFTPReplySingleline(writer, buf, 200)
 		} else {
 			log.Print("doLine: warning: CWD target folder \"", target, "\" Stat failed")
-			writeFTPReplySingleline(writer, 501)
+			writeFTPReplySingleline(writer, buf, 501)
 		}
 	case "PWD":
 		if !state.auth.HasAccess(auth.ReadOnly) {
-			writeFTPReplySingleline(writer, 530)
+			writeFTPReplySingleline(writer, buf, 530)
 			break
 		}
-		writeFTPReplySingleline(writer, 257, state.wd)
+		writeFTPReplySingleline(writer, buf, 257, state.wd)
 	case "CDUP":
 		if !state.auth.HasAccess(auth.ReadOnly) {
-			writeFTPReplySingleline(writer, 530)
+			writeFTPReplySingleline(writer, buf, 530)
 			break
 		}
 		// TODO CDUP called on root directory
 		if state.wd == "/" {
-			writeFTPReplySingleline(writer, 550)
+			writeFTPReplySingleline(writer, buf, 550)
 			break
 		}
 		newpath := state.wd[:strings.LastIndexByte(state.wd, '/')]
@@ -199,33 +203,33 @@ func (s *Server) doCtrlLine(line []byte, sc *bufio.Scanner, state *ctrlState, wr
 		stat, err := s.Node.Stat(newpath)
 		if err != nil || !stat.IsDirectory {
 			log.Print("doLine: warning: CDUP folder \"", state.wd, "\" -> \"", newpath, "\" Stat failed")
-			writeFTPReplySingleline(writer, 550)
+			writeFTPReplySingleline(writer, buf, 550)
 		} else {
 			//log.Print("doLine: CDUP folder \"", state.wd, "\" -> \"", newpath, "\"")
 			state.wd = newpath
-			writeFTPReplySingleline(writer, 200)
+			writeFTPReplySingleline(writer, buf, 200)
 		}
 	case "REIN":
 		(*state) = defaultCtrlState
-		writeFTPReplySingleline(writer, 200)
+		writeFTPReplySingleline(writer, buf, 200)
 	case "QUIT":
-		writeFTPReplySingleline(writer, 221)
+		writeFTPReplySingleline(writer, buf, 221)
 		writer.Close()
 
 	// ----- TRANSFER PARAMETER COMMANDS ----- //
 
 	case "PORT":
 		if !state.auth.HasAccess(auth.ReadOnly) {
-			writeFTPReplySingleline(writer, 530)
+			writeFTPReplySingleline(writer, buf, 530)
 			break
 		}
 		param := line[len(cmd)+1:]
 		state.activeIP, state.activePort = parseHostPort(param)
 		state.dataConnMode = DataConnActive
-		writeFTPReplySingleline(writer, 200)
+		writeFTPReplySingleline(writer, buf, 200)
 	case "PASV":
 		if !state.auth.HasAccess(auth.ReadOnly) {
-			writeFTPReplySingleline(writer, 530)
+			writeFTPReplySingleline(writer, buf, 530)
 			break
 		}
 		// Close previous
@@ -244,7 +248,7 @@ func (s *Server) doCtrlLine(line []byte, sc *bufio.Scanner, state *ctrlState, wr
 
 		dport := s.alloPort()
 		if dport == 0 {
-			writeFTPReplySingleline(writer, 421)
+			writeFTPReplySingleline(writer, buf, 421)
 			break
 		}
 		state.pasvPort = dport
@@ -252,79 +256,79 @@ func (s *Server) doCtrlLine(line []byte, sc *bufio.Scanner, state *ctrlState, wr
 		l, err := net.Listen("tcp4", net.JoinHostPort(addr, strconv.Itoa(dport)))
 		state.pasvListener = l.(*net.TCPListener)
 		if err != nil {
-			writeFTPReplySingleline(writer, 421)
+			writeFTPReplySingleline(writer, buf, 421)
 			log.Print("doCtrlLine: listen error: ", err)
 			break
 		}
 
 		_, pasvStr, err := net.SplitHostPort(state.pasvListener.Addr().String())
 		if err != nil {
-			writeFTPReplySingleline(writer, 421)
+			writeFTPReplySingleline(writer, buf, 421)
 			break
 		}
 		pasvPort, err := strconv.Atoi(pasvStr)
 		if err != nil {
-			writeFTPReplySingleline(writer, 421)
+			writeFTPReplySingleline(writer, buf, 421)
 			break
 		}
-		writeFTPReplySingleline(writer, 227, packHostPortSlice(net.ParseIP(s.DataAddress), pasvPort))
+		writeFTPReplySingleline(writer, buf, 227, packHostPortSlice(net.ParseIP(s.DataAddress), pasvPort))
 	case "TYPE":
 		if !state.auth.HasAccess(auth.ReadOnly) {
-			writeFTPReplySingleline(writer, 530)
+			writeFTPReplySingleline(writer, buf, 530)
 			break
 		}
 		param := line[len(cmd)+1:]
 		switch string(param) {
 		case "A":
 			state.datatype = DataASCII
-			writeFTPReplySingleline(writer, 200)
+			writeFTPReplySingleline(writer, buf, 200)
 		case "I":
 			state.datatype = DataImage
-			writeFTPReplySingleline(writer, 200)
+			writeFTPReplySingleline(writer, buf, 200)
 		case "E":
-			writeFTPReplySingleline(writer, 504)
+			writeFTPReplySingleline(writer, buf, 504)
 		default:
-			writeFTPReplySingleline(writer, 501)
+			writeFTPReplySingleline(writer, buf, 501)
 		}
 	case "STRU":
 		if !state.auth.HasAccess(auth.ReadOnly) {
-			writeFTPReplySingleline(writer, 530)
+			writeFTPReplySingleline(writer, buf, 530)
 			break
 		}
 		param := line[len(cmd)+1:]
 		switch string(param) {
 		case "F":
-			writeFTPReplySingleline(writer, 200)
+			writeFTPReplySingleline(writer, buf, 200)
 		case "R", "P":
-			writeFTPReplySingleline(writer, 504)
+			writeFTPReplySingleline(writer, buf, 504)
 		default:
-			writeFTPReplySingleline(writer, 501)
+			writeFTPReplySingleline(writer, buf, 501)
 		}
 	case "MODE":
 		if !state.auth.HasAccess(auth.ReadOnly) {
-			writeFTPReplySingleline(writer, 530)
+			writeFTPReplySingleline(writer, buf, 530)
 			break
 		}
 		param := line[len(cmd)+1:]
 		switch string(param) {
 		case "S":
 			//state.datamode = DataStream
-			writeFTPReplySingleline(writer, 200)
+			writeFTPReplySingleline(writer, buf, 200)
 		case "B", "C":
-			writeFTPReplySingleline(writer, 504)
+			writeFTPReplySingleline(writer, buf, 504)
 		default:
-			writeFTPReplySingleline(writer, 501)
+			writeFTPReplySingleline(writer, buf, 501)
 		}
 
 	// ----- FTP SERVICE COMMANDS ----- //
 
 	case "ABOR":
 		if !state.auth.HasAccess(auth.ReadOnly) {
-			writeFTPReplySingleline(writer, 530)
+			writeFTPReplySingleline(writer, buf, 530)
 			break
 		}
 		if state.pasvConn == nil {
-			writeFTPReplySingleline(writer, 226)
+			writeFTPReplySingleline(writer, buf, 226)
 			break
 		}
 		if atomic.LoadInt32(&state.inTransfer) != 0 {
@@ -339,87 +343,87 @@ func (s *Server) doCtrlLine(line []byte, sc *bufio.Scanner, state *ctrlState, wr
 			state.pasvConn.Close()
 			state.pasvConn = nil
 		}
-		writeFTPReplySingleline(writer, 226)
+		writeFTPReplySingleline(writer, buf, 226)
 
 	// TODO Active Mode Data Connection
 	case "RETR":
 		if !state.auth.HasAccess(auth.ReadOnly) {
-			writeFTPReplySingleline(writer, 530)
+			writeFTPReplySingleline(writer, buf, 530)
 			break
 		}
 		param := line[len(cmd)+1:]
 		f, err := s.Node.ReadFile(state.wd + "/" + string(param))
 		if err != nil {
-			writeFTPReplySingleline(writer, 550)
+			writeFTPReplySingleline(writer, buf, 550)
 		} else {
 			s.writeToDataConn(f, sc, state, writer)
 		}
 	case "STOR":
 		if !state.auth.HasAccess(auth.ReadWrite) {
-			writeFTPReplySingleline(writer, 530)
+			writeFTPReplySingleline(writer, buf, 530)
 			break
 		}
 		param := line[len(cmd)+1:]
 		f, err := s.Node.WriteFile(state.wd + "/" + string(param))
 		if err != nil {
-			writeFTPReplySingleline(writer, 550)
+			writeFTPReplySingleline(writer, buf, 550)
 		} else {
 			s.readFromDataConn(f, sc, state, writer)
 		}
 	case "APPE":
 		if !state.auth.HasAccess(auth.ReadWrite) {
-			writeFTPReplySingleline(writer, 530)
+			writeFTPReplySingleline(writer, buf, 530)
 			break
 		}
 		param := line[len(cmd)+1:]
 		f, err := s.Node.AppendFile(state.wd + "/" + string(param))
 		if err != nil {
-			writeFTPReplySingleline(writer, 550)
+			writeFTPReplySingleline(writer, buf, 550)
 		} else {
 			s.readFromDataConn(f, sc, state, writer)
 		}
 	case "DELE":
 		if !state.auth.HasAccess(auth.ReadWrite) {
-			writeFTPReplySingleline(writer, 530)
+			writeFTPReplySingleline(writer, buf, 530)
 			break
 		}
 		param := line[len(cmd)+1:]
 		err := s.Node.DeleteFile(state.wd + "/" + string(param))
 		if err != nil {
-			writeFTPReplySingleline(writer, 550)
+			writeFTPReplySingleline(writer, buf, 550)
 		} else {
-			writeFTPReplySingleline(writer, 200)
+			writeFTPReplySingleline(writer, buf, 200)
 		}
 	case "RMD":
 		if !state.auth.HasAccess(auth.ReadWrite) {
-			writeFTPReplySingleline(writer, 530)
+			writeFTPReplySingleline(writer, buf, 530)
 			break
 		}
 		param := line[len(cmd)+1:]
 		err := s.Node.RemoveDirectory(state.wd + "/" + string(param))
 		if err != nil {
-			writeFTPReplySingleline(writer, 550)
+			writeFTPReplySingleline(writer, buf, 550)
 		} else {
-			writeFTPReplySingleline(writer, 200)
+			writeFTPReplySingleline(writer, buf, 200)
 		}
 	case "MKD":
 		if !state.auth.HasAccess(auth.ReadWrite) {
-			writeFTPReplySingleline(writer, 530)
+			writeFTPReplySingleline(writer, buf, 530)
 			break
 		}
 		param := line[len(cmd)+1:]
 		err := s.Node.MakeDirectory(state.wd + "/" + string(param))
 		if err != nil {
-			writeFTPReplySingleline(writer, 550)
+			writeFTPReplySingleline(writer, buf, 550)
 		} else {
-			writeFTPReplySingleline(writer, 200)
+			writeFTPReplySingleline(writer, buf, 200)
 		}
 
 	// ----- RFC3659 EXTENSION COMMANDS ----- //
 
 	case "SIZE":
 		if !state.auth.HasAccess(auth.ReadOnly) {
-			writeFTPReplySingleline(writer, 530)
+			writeFTPReplySingleline(writer, buf, 530)
 			break
 		}
 		param := state.wd + "/" + string(line[len(cmd)+1:])
@@ -428,13 +432,13 @@ func (s *Server) doCtrlLine(line []byte, sc *bufio.Scanner, state *ctrlState, wr
 		}
 		stat, err := s.Node.Stat(param)
 		if err != nil {
-			writeFTPReplySingleline(writer, 550)
+			writeFTPReplySingleline(writer, buf, 550)
 		} else {
-			writeFTPReplySingleline(writer, 213, strconv.FormatInt(stat.Size, 10))
+			writeFTPReplySingleline(writer, buf, 213, strconv.FormatInt(stat.Size, 10))
 		}
 	case "MDTM":
 		if !state.auth.HasAccess(auth.ReadOnly) {
-			writeFTPReplySingleline(writer, 530)
+			writeFTPReplySingleline(writer, buf, 530)
 			break
 		}
 		param := state.wd + "/" + string(line[len(cmd)+1:])
@@ -443,13 +447,13 @@ func (s *Server) doCtrlLine(line []byte, sc *bufio.Scanner, state *ctrlState, wr
 		}
 		stat, err := s.Node.Stat(param)
 		if err != nil {
-			writeFTPReplySingleline(writer, 550)
+			writeFTPReplySingleline(writer, buf, 550)
 		} else {
-			writeFTPReplySingleline(writer, 213, ftpTime(stat.LastModify))
+			writeFTPReplySingleline(writer, buf, 213, ftpTime(stat.LastModify))
 		}
 	case "MLST":
 		if !state.auth.HasAccess(auth.ReadOnly) {
-			writeFTPReplySingleline(writer, 530)
+			writeFTPReplySingleline(writer, buf, 530)
 			break
 		}
 		var param string
@@ -463,17 +467,16 @@ func (s *Server) doCtrlLine(line []byte, sc *bufio.Scanner, state *ctrlState, wr
 		}
 		stat, err := s.Node.Stat(param)
 		if err != nil {
-			writeFTPReplySingleline(writer, 550)
+			writeFTPReplySingleline(writer, buf, 550)
 			break
 		}
-		var buf bytes.Buffer
 		buf.WriteString("250- Listing starting\r\n ")
-		formatMLSXString(&buf, &stat)
+		formatMLSXString(buf, &stat)
 		buf.WriteString("\r\n250 End\r\n")
 		buf.WriteTo(writer)
 	case "MLSD":
 		if !state.auth.HasAccess(auth.ReadOnly) {
-			writeFTPReplySingleline(writer, 530)
+			writeFTPReplySingleline(writer, buf, 530)
 			break
 		}
 		var param string
@@ -488,19 +491,60 @@ func (s *Server) doCtrlLine(line []byte, sc *bufio.Scanner, state *ctrlState, wr
 		list, err := s.Node.List(param)
 		if err != nil {
 			if err == mount.ErrNotFolder {
-				writeFTPReplySingleline(writer, 501)
+				writeFTPReplySingleline(writer, buf, 501)
 			} else {
-				writeFTPReplySingleline(writer, 550)
+				writeFTPReplySingleline(writer, buf, 550)
 			}
 			break
 		}
 
 		s.writeToDataConn(newMLSDWriter(list), sc, state, writer)
 
+	case "LIST":
+		if !state.auth.HasAccess(auth.ReadOnly) {
+			writeFTPReplySingleline(writer, buf, 530)
+			break
+		}
+		list, err := s.Node.List(state.wd)
+		if err != nil {
+			if err == mount.ErrNotFolder {
+				writeFTPReplySingleline(writer, buf, 501)
+			} else {
+				writeFTPReplySingleline(writer, buf, 550)
+			}
+			break
+		}
+
+		var permstr string
+		switch state.auth {
+		case auth.ReadOnly:
+			permstr = "r--r--r--"
+		case auth.ReadWrite:
+			permstr = "rw-rw-rw-"
+		}
+
+		// We need a new buffer for async send
+		buf := &bytes.Buffer{}
+		for _, f := range list {
+			if f.IsDirectory {
+				buf.WriteByte('d')
+			} else {
+				buf.WriteByte('-')
+			}
+			buf.WriteString(permstr)
+			buf.WriteString(" 1 user group ")
+			fmt.Fprintf(buf, "%12d %s %s\r\n",
+				f.Size,
+				f.LastModify.Format("Jan _2 2006"),
+				f.Name,
+			)
+		}
+
+		s.writeToDataConn(buf, sc, state, writer)
+
 	// ----- OTHER EXTENSION COMMANDS ----- //
 
 	case "FEAT":
-		var buf bytes.Buffer
 		buf.WriteString("211- Features supported\r\n")
 		buf.Write(Features)
 		buf.WriteString("211 End\r\n")
@@ -510,11 +554,11 @@ func (s *Server) doCtrlLine(line []byte, sc *bufio.Scanner, state *ctrlState, wr
 		}
 
 	case "ALLO", "NOOP":
-		writeFTPReplySingleline(writer, 200)
-	case "ACCT", "STOU", "REST", "LIST", "NLST", "SITE", "SYST", "STAT":
-		writeFTPReplySingleline(writer, 502) // Command not Implemented
+		writeFTPReplySingleline(writer, buf, 200)
+	case "ACCT", "STOU", "REST", "NLST", "SITE", "SYST", "STAT":
+		writeFTPReplySingleline(writer, buf, 502) // Command not Implemented
 	default:
-		writeFTPReplySingleline(writer, 500)
+		writeFTPReplySingleline(writer, buf, 500)
 	}
 }
 

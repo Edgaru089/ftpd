@@ -30,21 +30,21 @@ func ScanCRLF(data []byte, atEOF bool) (advance int, token []byte, err error) {
 // the params are fed to fmt.Sprintf if provided.
 // Panics if ReplyCodes does not have code in it.
 // Closes the writer if error returned.
-func writeFTPReplySingleline(writer io.WriteCloser, code int, params ...interface{}) {
+func writeFTPReplySingleline(writer io.WriteCloser, buf *bytes.Buffer, code int, params ...interface{}) {
+	buf.Reset()
 	reply, ok := ReplyCodes[code]
 	if !ok {
 		panic(fmt.Errorf("writeFTPReply: %d not a valid reply code", code))
 	}
 
 	// We (should) avoid small writes and form a buffer.
-	var buf bytes.Buffer
 	buf.Write(strconv.AppendInt(nil, int64(code), 10))
 	buf.WriteByte(' ')
 
 	if len(params) == 0 {
 		buf.Write(reply) // This should be a much faster path.
 	} else {
-		fmt.Fprintf(&buf, string(reply), params...)
+		fmt.Fprintf(buf, string(reply), params...)
 	}
 
 	buf.WriteString("\r\n")
