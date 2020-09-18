@@ -135,6 +135,13 @@ func (root *NodeTree) walk(path string) *node {
 	dirs := strings.Split(stripSlash(path), "/")
 	log.Print("mount:", stripSlash(path), ", dirs:", dirs, ", len:", len(dirs))
 
+	root.RLock()
+	if root.node != nil {
+		root.RUnlock()
+		log.Print("Returning ", root.completePath)
+		return (*node)(root)
+	}
+
 	cur := (*node)(root)
 	for _, str := range dirs {
 		if len(str) == 0 {
