@@ -553,9 +553,17 @@ func (s *Server) doCtrlLine(line []byte, sc *bufio.Scanner, state *ctrlState, wr
 			writer.Close()
 		}
 
+	case "SYST":
+		// Write "UNIX Type: L8" as described in https://cr.yp.to/ftp/syst.html
+		buf.WriteString("215 UNIX Type: L8\r\n")
+		_, err := buf.WriteTo(writer)
+		if err != nil {
+			writer.Close()
+		}
+
 	case "ALLO", "NOOP":
 		writeFTPReplySingleline(writer, buf, 200)
-	case "ACCT", "STOU", "REST", "NLST", "SITE", "SYST", "STAT":
+	case "ACCT", "STOU", "REST", "NLST", "SITE", "STAT":
 		writeFTPReplySingleline(writer, buf, 502) // Command not Implemented
 	default:
 		writeFTPReplySingleline(writer, buf, 500)
