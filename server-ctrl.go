@@ -523,6 +523,7 @@ func (s *Server) doCtrlLine(line []byte, sc *bufio.Scanner, state *ctrlState, wr
 			permstr = "rw-rw-rw-"
 		}
 
+		year := time.Now().Year()
 		// We need a new buffer for async send
 		buf := &bytes.Buffer{}
 		for _, f := range list {
@@ -533,11 +534,15 @@ func (s *Server) doCtrlLine(line []byte, sc *bufio.Scanner, state *ctrlState, wr
 			}
 			buf.WriteString(permstr)
 			buf.WriteString(" 1 user group ")
-			fmt.Fprintf(buf, "%12d %s %s\r\n",
-				f.Size,
-				f.LastModify.Format("Jan _2 2006"),
-				f.Name,
-			)
+			var t string
+			// Refer to https://cr.yp.to/ftp/list/binls.html for
+			// details on the /bin/ls format.
+			if f.LastModify.Year() != year {
+				t = f.LastModify.Format("Jan _2 2006")
+			} else {
+				t = f.LastModify.Format("Jan _2 15:04")
+			}
+			fmt.Fprintf(buf, "%12d %s %s\r\n", f.Size, t, f.Name)
 		}
 
 		s.writeToDataConn(buf, sc, state, writer)
