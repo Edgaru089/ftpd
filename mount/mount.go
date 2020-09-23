@@ -7,7 +7,6 @@ import (
 	"log"
 	"os"
 	"strings"
-	"sync"
 	"time"
 )
 
@@ -29,6 +28,8 @@ var (
 // Node is a node (folder) in the virtual filesystem.
 // The file/dir parameters are relative paths, but with no "./"
 // at the beginning, or other relative marks like "..".
+//
+// The Node interface methods must be safe to call from multiple goroutines.
 type Node interface {
 	// Name returns the name to be printed for a human reader to identify.
 	Name() string
@@ -99,9 +100,6 @@ func (err *MountError) Error() string {
 // unexported Node is the wrapper for a tree strcture with exported
 // Node-s at the leaves
 type node struct {
-	// Lock this please when visiting children but unlock it before recursing
-	sync.RWMutex
-
 	completePath string // the complete path of the node, with / at the beginning and the end
 
 	node   Node             // a node
@@ -135,9 +133,7 @@ func (root *NodeTree) walk(path string) *node {
 	dirs := strings.Split(stripSlash(path), "/")
 	log.Print("mount:", stripSlash(path), ", dirs:", dirs, ", len:", len(dirs))
 
-	root.RLock()
 	if root.node != nil {
-		root.RUnlock()
 		log.Print("Returning ", root.completePath)
 		return (*node)(root)
 	}
@@ -149,32 +145,26 @@ func (root *NodeTree) walk(path string) *node {
 		}
 		//fmt.Println("walking past", str)
 
-		cur.RLock()
-
 		if cur.ch == nil || cur.ch[str] == nil {
-			cur.RUnlock()
 			return nil
 		}
 
-		prev := cur
 		cur = cur.ch[str]
-		prev.RUnlock()
-		cur.RLock()
 
 		// has a node
 		if cur.node != nil {
-			cur.RUnlock()
 			log.Print("Returning ", cur.completePath)
 			return cur
 		}
 
-		cur.RUnlock()
 	}
 
 	return cur
 }
 
 // Mount mounts the node at the path in the VFS rooted at root.
+//
+// It must not be called concurrently with other access functions of *NodeTree.
 func (root *NodeTree) Mount(path string, n Node) error {
 	if root == nil {
 		return &MountError{MountPath: path, NodeName: n.Name(), Type: MountErrorRootIsNil}
@@ -190,10 +180,8 @@ func (root *NodeTree) Mount(path string, n Node) error {
 		}
 		//fmt.Println("walking past", str)
 
-		cur.Lock()
 		// has a node
 		if cur.node != nil {
-			cur.Unlock()
 			return &MountError{MountPath: path, NodeName: n.Name(), Type: MountErrorPathHasLeaf}
 		}
 
@@ -209,9 +197,7 @@ func (root *NodeTree) Mount(path string, n Node) error {
 			}
 		}
 
-		prev := cur
 		cur = cur.ch[str]
-		prev.Unlock()
 	}
 
 	log.Print("mount: Mount walk done, cur.Path:", cur.completePath)
@@ -244,17 +230,10 @@ func (n *NodeTree) List(folder string) (files []File, err error) {
 	}
 
 	node := n.walk(folder)
-	node.RLock()
-	// Oops! defer executes after return
-	//defer node.RUnlock()
 
 	if node.node != nil {
-		node.RUnlock()
 		return node.node.List(folder[len(node.completePath):])
 	}
-
-	// We can defer now!
-	defer node.RUnlock()
 
 	// we have only folders in a virtual filesystem...
 	files = make([]File, len(node.ch))
